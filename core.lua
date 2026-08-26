@@ -1,38 +1,45 @@
 local core = {}
 
-local clock = os.clock
-local active_clicks = 0
-local cached_intervals = {}
-
-function core.precompute_timings(base_rate, jitter)
-    local cache = {}
-    for i = 1, 1000 do
-        local variation = (math.random() - 0.5) * jitter
-        cache[i] = math.max(0.001, (1.0 / base_rate) + variation)
-    end
-    cached_intervals = cache
-    return #cached_intervals
-end
-
-function core.next_interval(step)
-    return cached_intervals[(step % 1000) + 1]
-end
-
-function core.hyper_click_loop(target_clicks, click_callback)
-    local current = 0
-    local start_time = clock()
+local function sanity_check(cfg)
+    assert(type(cfg) == "table", "config must be a table entity")
+    assert(type(cfg.cps) == "number" and cfg.cps > 0, "cps must be a positive integer")
+    assert(type(cfg.key) == "string" and #cfg.key > 0, "key binding must be a non-empty string")
     
-    while current < target_clicks do
-        current = current + 1
-        local delay = core.next_interval(current)
-        click_callback()
+    cfg.interval = 1 / cfg.cps
+    cfg.burst_limit = cfg.burst_limit or 100
+    return true
+end
+
+function core.process_loop(raw_config, click_callback)
+    local ok, err = pcall(sanity_check, raw_config)
+    if not ok then
+        io.stderr:write("[AUTO-95 FATAL] input validation failed: ", tostring(err), "\n")
+        return false, err
+    end
+
+    local active = true
+    local iterations = 0
+
+    while active and iterations < raw_config.burst_limit do
+        local start_time = os.clock()
         
-        local limit = clock() + delay
-        while clock() < limit do
+        click_callback(raw_config.key)
+        iterations = iterations + 1
+        
+        local elapsed = os.clock() - start_time
+        local deficit = raw_config.interval - elapsed
+        
+        if deficit > 0 then
+            -- Yield execution precisely to respect CPS limits
+            os.execute("sleep " .. tonumber(string.format("%.4f", deficit)))
+        end
+        
+        if iterations >= 1000000 then
+            active = false
         end
     end
-    
-    return clock() - start_time
+
+    return true, iterations
 end
 
 return core

@@ -1,29 +1,38 @@
-local json = require("dkjson")
+local config = {}
 
-local defaultConfig = {
-    clickRate = 0.1,
-    duration = 60,
-    enabled = true,
+local defaults = {
+    cps = 15,
+    hotkey = "F6",
+    toggle_sound = true,
+    randomization = 0.15,
+    click_type = "left"
 }
 
-local function loadConfig(filePath)
-    local file = io.open(filePath, "r")
-    if not file then
-        return defaultConfig
+function config.load(user_path)
+    local loaded = {}
+    local file = io.open(user_path or "settings.dat", "r")
+    
+    if file then
+        for line in file:lines() do
+            local k, v = line:match("^%s*(%w+)%s*=%s*(.+)%s*$")
+            if k and v then
+                if v == "true" then v = true
+                elseif v == "false" then v = false
+                elseif tonumber(v) then v = tonumber(v)
+                end
+                loaded[k] = v
+            end
+        end
+        file:close()
     end
-    local content = file:read("*a")
-    file:close()
-
-    local config, pos, err = json.decode(content, 1, nil)
-    if err then
-        print("Error loading config: " .. err)
-        return defaultConfig
-    end
-
-    return setmetatable(config or {}, { __index = defaultConfig })
+    
+    setmetatable(loaded, {
+        __index = function(_, key)
+            return defaults[key]
+        end
+    })
+    
+    return loaded
 end
 
-return {
-    loadConfig = loadConfig,
-    defaultConfig = defaultConfig,
-}
+return config

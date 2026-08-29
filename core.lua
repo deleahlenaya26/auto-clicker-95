@@ -1,45 +1,44 @@
 local core = {}
-
-local function sanity_check(cfg)
-    assert(type(cfg) == "table", "config must be a table entity")
-    assert(type(cfg.cps) == "number" and cfg.cps > 0, "cps must be a positive integer")
-    assert(type(cfg.key) == "string" and #cfg.key > 0, "key binding must be a non-empty string")
-    
-    cfg.interval = 1 / cfg.cps
-    cfg.burst_limit = cfg.burst_limit or 100
-    return true
+core.logger = { file = "auto-clicker-95.log", max_size = 1024*1024, rotations = 4 }
+function core.logger.get_size()
+  local file = io.open(core.logger.file, "rb")
+  if file == nil then
+    return 0
+  end
+  local size = file:seek("end")
+  file:close()
+  return size or 0
 end
-
-function core.process_loop(raw_config, click_callback)
-    local ok, err = pcall(sanity_check, raw_config)
-    if not ok then
-        io.stderr:write("[AUTO-95 FATAL] input validation failed: ", tostring(err), "\n")
-        return false, err
-    end
-
-    local active = true
-    local iterations = 0
-
-    while active and iterations < raw_config.burst_limit do
-        local start_time = os.clock()
-        
-        click_callback(raw_config.key)
-        iterations = iterations + 1
-        
-        local elapsed = os.clock() - start_time
-        local deficit = raw_config.interval - elapsed
-        
-        if deficit > 0 then
-            -- Yield execution precisely to respect CPS limits
-            os.execute("sleep " .. tonumber(string.format("%.4f", deficit)))
-        end
-        
-        if iterations >= 1000000 then
-            active = false
-        end
-    end
-
-    return true, iterations
+function core.logger.rotate()
+  local base = core.logger.file
+  local max = core.logger.rotations
+  for i = max - 1, 1, -1 do
+    local src = base .. "." .. i
+    local dst = base .. "." .. (i + 1)
+    pcall(function() os.rename(src, dst) end)
+  end
+  pcall(function() os.rename(base, base .. ".1") end)
 end
-
-return core
+function core.logger.log(msg)
+  if core.logger.get_size() > core.logger.max_size then
+    core.logger.rotate()
+  end
+  local file = io.open(core.logger.file, "a")
+  if file then
+    file:write(os.date("%Y-%m-%d %H:%M:%S") .. ": " .. tostring(msg) .. "\n")
+    file:close()
+  end
+end
+function core.logger.setup(options)
+  options = options or {}
+  core.logger.file = options.file or core.logger.file
+  core.logger.max_size = options.max_size or core.logger.max_size
+  core.logger.rotations = options.rotations or core.logger.rotations
+  local f = io.open(core.logger.file, "a")
+  if f ~= nil then
+    f:close()
+  end
+end
+_G.log = core.logger.log
+core.logger.setup()
+log("Logger initialized with rotation")

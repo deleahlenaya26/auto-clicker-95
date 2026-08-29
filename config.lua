@@ -1,59 +1,55 @@
-local config = {}
-config.settings = {click_interval_ms = 50, total_clicks = 100, button = "left"}
+local M = {}
+M.defaults = {
+    interval = 100,
+    clicks = 0,
+    button = "left",
+    hotkey = "F8",
+    random = false,
+    pos_x = 0,
+    pos_y = 0
+}
 
-function config.validate()
-  local errors = {}
-  if type(config.settings.click_interval_ms) ~= "number" or config.settings.click_interval_ms <= 0 then
-    table.insert(errors, "click_interval_ms must be positive number")
-    config.settings.click_interval_ms = 50
-  end
-  if type(config.settings.total_clicks) ~= "number" or config.settings.total_clicks < 1 then
-    table.insert(errors, "total_clicks must be positive integer")
-    config.settings.total_clicks = 100
-  end
-  if config.settings.button ~= "left" and config.settings.button ~= "right" then
-    table.insert(errors, "button must be left or right")
-    config.settings.button = "left"
-  end
-  if #errors > 0 then
-    print("Edge case errors corrected:")
-    for _, e in ipairs(errors) do print(" - " .. e) end
-  end
-  return #errors == 0
+function M.load(filename)
+    local cfg = {}
+    for k, v in pairs(M.defaults) do
+        cfg[k] = v
+    end
+    local f = io.open(filename, "r")
+    if f then
+        for line in f:lines() do
+            local key, val = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
+            if key and val then
+                if val == "true" then
+                    val = true
+                elseif val == "false" then
+                    val = false
+                else
+                    local num = tonumber(val)
+                    if num then val = num end
+                end
+                cfg[key] = val
+            end
+        end
+        f:close()
+    end
+    return cfg
 end
 
-function config.load(path)
-  local file, err = io.open(path, "r")
-  if not file then print("Warning: no config file. " .. (err or "")) return false end
-  local content = file:read("*all") file:close()
-  local func, load_err = load("return " .. content, "config", "t", {})
-  if not func then print("Parse error: " .. (load_err or "")) return false end
-  local ok, data = pcall(func)
-  if not ok then print("Exec error: " .. tostring(data)) return false end
-  if type(data) ~= "table" then print("Config not table") return false end
-  for k, v in pairs(data) do if config.settings[k] ~= nil then config.settings[k] = v end end
-  return true
+function M.save(cfg, filename)
+    if not cfg or not filename then return false end
+    local f = io.open(filename, "w")
+    if not f then return false end
+    for k, v in pairs(cfg) do
+        if type(v) ~= "function" then
+            f:write(string.format("%s = %s\n", k, tostring(v)))
+        end
+    end
+    f:close()
+    return true
 end
 
-function config.get(key)
-  if config.settings[key] == nil then error("Unknown key: " .. key) end
-  return config.settings[key]
+function M.get_with_default(cfg, key)
+    return cfg[key] or M.defaults[key]
 end
 
-function config.run()
-  local status, interval = pcall(config.get, "click_interval_ms")
-  if not status then interval = 50 end
-  local status2, total = pcall(config.get, "total_clicks")
-  if not status2 then total = 100 end
-  local count = 0
-  while count < total do
-    print("Click " .. config.settings.button .. " #" .. count+1)
-    local start = os.clock()
-    while os.clock() - start < interval/1000 do end
-    count = count + 1
-  end
-end
-
-config.validate()
-config.load("settings.lua")
-config.run()
+return M

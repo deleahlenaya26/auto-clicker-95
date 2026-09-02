@@ -1,44 +1,51 @@
 local core = {}
-core.logger = { file = "auto-clicker-95.log", max_size = 1024*1024, rotations = 4 }
-function core.logger.get_size()
-  local file = io.open(core.logger.file, "rb")
-  if file == nil then
-    return 0
-  end
-  local size = file:seek("end")
-  file:close()
-  return size or 0
-end
-function core.logger.rotate()
-  local base = core.logger.file
-  local max = core.logger.rotations
-  for i = max - 1, 1, -1 do
-    local src = base .. "." .. i
-    local dst = base .. "." .. (i + 1)
-    pcall(function() os.rename(src, dst) end)
-  end
-  pcall(function() os.rename(base, base .. ".1") end)
-end
-function core.logger.log(msg)
-  if core.logger.get_size() > core.logger.max_size then
-    core.logger.rotate()
-  end
-  local file = io.open(core.logger.file, "a")
-  if file then
-    file:write(os.date("%Y-%m-%d %H:%M:%S") .. ": " .. tostring(msg) .. "\n")
-    file:close()
+core.running = false
+core.click_count = 0
+local schedule = {}
+local schedule_size = 50
+local function build_schedule(cps)
+  if cps < 1 then cps = 1 end
+  local interval = 1 / cps
+  for i = 1, schedule_size do
+    schedule[i] = interval
   end
 end
-function core.logger.setup(options)
-  options = options or {}
-  core.logger.file = options.file or core.logger.file
-  core.logger.max_size = options.max_size or core.logger.max_size
-  core.logger.rotations = options.rotations or core.logger.rotations
-  local f = io.open(core.logger.file, "a")
-  if f ~= nil then
-    f:close()
+function core.start_clicking(cps, max_clicks)
+  build_schedule(cps or 5)
+  core.running = true
+  core.click_count = 0
+  local idx = 1
+  local target = os.clock()
+  while core.running do
+    if max_clicks and core.click_count >= max_clicks then
+      break
+    end
+    core.click_count = core.click_count + 1
+    print("click performed at count " .. core.click_count)
+    target = target + schedule[idx]
+    idx = idx + 1
+    if idx > schedule_size then
+      idx = 1
+    end
+    while os.clock() < target do
+    end
+  end
+  core.running = false
+end
+function core.stop_clicking()
+  core.running = false
+end
+function core.get_performance_stats()
+  return {
+    total_clicks = core.click_count,
+    is_running = core.running
+  }
+end
+function core.reset()
+  core.click_count = 0
+  core.running = false
+  for i = 1, schedule_size do
+    schedule[i] = 0
   end
 end
-_G.log = core.logger.log
-core.logger.setup()
-log("Logger initialized with rotation")
+return core

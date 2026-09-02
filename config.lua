@@ -1,72 +1,76 @@
-local M = {}
-M.defaults = {
-	interval_ms = 50,
-	mouse_button = "left",
-	hotkey_start = "F8",
-	hotkey_stop = "F9",
-	max_clicks = 0,
-	randomize = false,
-	randomize_amount = 10
+local config = {}
+config.logger = {
+    file = "auto-clicker-95.log",
+    max_size = 1024 * 1024,
+    max_backups = 5,
+    level = "INFO"
 }
 
-local function merge(base, override)
-	local result = {}
-	for k, v in pairs(base) do
-		result[k] = v
-	end
-	for k, v in pairs(override) do
-		result[k] = v
-	end
-	return result
+local log_levels = { DEBUG = 1, INFO = 2, WARN = 3, ERROR = 4 }
+
+function config.logger:should_log(level)
+    return log_levels[level] >= log_levels[self.level]
 end
 
-function M.load(path)
-	local loaded = {}
-	local file = io.open(path, "r")
-	if file then
-		local content = file:read("*a")
-		file:close()
-		local chunk = load("return " .. content, "config", "t")
-		if chunk then
-			local success, data = pcall(chunk)
-			if success and type(data) == "table" then
-				loaded = data
-			end
-		end
-	end
-	local merged = merge(M.defaults, loaded)
-	local proxy = {}
-	local mt = {
-		__index = function(t, key)
-			return merged[key]
-		end,
-		__newindex = function(t, key, value)
-			merged[key] = value
-		end,
-		__pairs = function(t)
-			return pairs(merged)
-		end
-	}
-	setmetatable(proxy, mt)
-	return proxy
+function config.logger:rotate()
+    for i = self.max_backups, 2, -1 do
+        local src = self.file .. "." .. (i - 1)
+        local dst = self.file .. "." .. i
+        local handle = io.open(src, "r")
+        if handle then
+            handle:close()
+            pcall(os.remove, dst)
+            os.rename(src, dst)
+        end
+    end
+    local handle = io.open(self.file, "r")
+    if handle then
+        handle:close()
+        pcall(os.remove, self.file .. "." .. (self.max_backups + 1))
+        os.rename(self.file, self.file .. ".1")
+    end
 end
 
-function M.save(path, cfg)
-	local f = io.open(path, "w")
-	if not f then return false end
-	f:write("{\n")
-	for k, v in pairs(cfg) do
-		local valstr
-		if type(v) == "string" then
-			valstr = string.format("%q", v)
-		else
-			valstr = tostring(v)
-		end
-		f:write("  " .. k .. " = " .. valstr .. ",\n")
-	end
-	f:write("}\n")
-	f:close()
-	return true
+function config.logger:write_log(level, msg)
+    if not self:should_log(level) then return end
+    local timestamp = os.date("%Y-%m-%d %H:%M:%S")
+    local log_entry = string.format("%s [%s] %s\n", timestamp, level, msg)
+    local handle = io.open(self.file, "a")
+    if handle then
+        handle:write(log_entry)
+        handle:close()
+    end
+    handle = io.open(self.file, "r")
+    if handle then
+        local size = handle:seek("end")
+        handle:close()
+        if size > self.max_size then
+            self:rotate()
+        end
+    end
 end
 
-return M
+local proxy = {}
+setmetatable(proxy, {
+    __index = function(t, level)
+        return function(msg)
+            config.logger:write_log(level, msg)
+        end
+    end
+})
+
+config.log = proxy
+
+function config.setup_logger(settings)
+    if settings then
+        for k, v in pairs(settings) do
+            if config.logger[k] ~= nil then
+                config.logger[k] = v
+            end
+        end
+    end
+    local h = io.open(config.logger.file, "a")
+    if h then h:close() end
+end
+
+return config

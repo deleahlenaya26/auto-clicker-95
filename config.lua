@@ -1,55 +1,72 @@
 local M = {}
 M.defaults = {
-    interval = 100,
-    clicks = 0,
-    button = "left",
-    hotkey = "F8",
-    random = false,
-    pos_x = 0,
-    pos_y = 0
+	interval_ms = 50,
+	mouse_button = "left",
+	hotkey_start = "F8",
+	hotkey_stop = "F9",
+	max_clicks = 0,
+	randomize = false,
+	randomize_amount = 10
 }
 
-function M.load(filename)
-    local cfg = {}
-    for k, v in pairs(M.defaults) do
-        cfg[k] = v
-    end
-    local f = io.open(filename, "r")
-    if f then
-        for line in f:lines() do
-            local key, val = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
-            if key and val then
-                if val == "true" then
-                    val = true
-                elseif val == "false" then
-                    val = false
-                else
-                    local num = tonumber(val)
-                    if num then val = num end
-                end
-                cfg[key] = val
-            end
-        end
-        f:close()
-    end
-    return cfg
+local function merge(base, override)
+	local result = {}
+	for k, v in pairs(base) do
+		result[k] = v
+	end
+	for k, v in pairs(override) do
+		result[k] = v
+	end
+	return result
 end
 
-function M.save(cfg, filename)
-    if not cfg or not filename then return false end
-    local f = io.open(filename, "w")
-    if not f then return false end
-    for k, v in pairs(cfg) do
-        if type(v) ~= "function" then
-            f:write(string.format("%s = %s\n", k, tostring(v)))
-        end
-    end
-    f:close()
-    return true
+function M.load(path)
+	local loaded = {}
+	local file = io.open(path, "r")
+	if file then
+		local content = file:read("*a")
+		file:close()
+		local chunk = load("return " .. content, "config", "t")
+		if chunk then
+			local success, data = pcall(chunk)
+			if success and type(data) == "table" then
+				loaded = data
+			end
+		end
+	end
+	local merged = merge(M.defaults, loaded)
+	local proxy = {}
+	local mt = {
+		__index = function(t, key)
+			return merged[key]
+		end,
+		__newindex = function(t, key, value)
+			merged[key] = value
+		end,
+		__pairs = function(t)
+			return pairs(merged)
+		end
+	}
+	setmetatable(proxy, mt)
+	return proxy
 end
 
-function M.get_with_default(cfg, key)
-    return cfg[key] or M.defaults[key]
+function M.save(path, cfg)
+	local f = io.open(path, "w")
+	if not f then return false end
+	f:write("{\n")
+	for k, v in pairs(cfg) do
+		local valstr
+		if type(v) == "string" then
+			valstr = string.format("%q", v)
+		else
+			valstr = tostring(v)
+		end
+		f:write("  " .. k .. " = " .. valstr .. ",\n")
+	end
+	f:write("}\n")
+	f:close()
+	return true
 end
 
 return M

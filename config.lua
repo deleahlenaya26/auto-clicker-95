@@ -1,40 +1,49 @@
--- auto-clicker-95 configuration management
-local json = require('json')
-
-local ConfigManager = {
-    storage_path = 'settings.dat',
-    defaults = {
-        cps = 10,
-        toggle_key = 'f6',
-        jitter_radius = 2
-    }
+local registry = {
+  ["HKCU/Software/AutoClicker95/Settings/Interval"] = 100,
+  ["HKCU/Software/AutoClicker95/Settings/Button"] = "left",
+  ["HKCU/Software/AutoClicker95/Theme/Vaporwave"] = true
 }
 
-function ConfigManager.load()
-    local file = io.open(ConfigManager.storage_path, 'r')
-    if not file then return ConfigManager.defaults end
-    
-    local content = file:read('*all')
-    file:close()
-    
-    local ok, data = pcall(json.decode, content)
-    return ok and data or ConfigManager.defaults
-end
+local config = {}
+local fallback = {
+  interval = 100,
+  button = "left",
+  vaporwave = false
+}
 
-function ConfigManager.save(data)
-    local file = io.open(ConfigManager.storage_path, 'w')
-    if file then
-        file:write(json.encode(data, {indent = true}))
-        file:close()
+local key_map = {
+  interval = "HKCU/Software/AutoClicker95/Settings/Interval",
+  button = "HKCU/Software/AutoClicker95/Settings/Button",
+  vaporwave = "HKCU/Software/AutoClicker95/Theme/Vaporwave"
+}
+
+setmetatable(config, {
+  __index = function(_, key)
+    local reg_path = key_map[key]
+    if reg_path and registry[reg_path] ~= nil then
+      return registry[reg_path]
     end
-end
-
-function ConfigManager.apply_patch(patch)
-    local current = ConfigManager.load()
-    for k, v in pairs(patch) do
-        current[k] = v
+    return fallback[key]
+  end,
+  __newindex = function(_, key, value)
+    local reg_path = key_map[key]
+    if not reg_path then return end
+    
+    if key == "interval" and (type(value) ~= "number" or value < 1) then
+      value = fallback.interval
+    elseif key == "button" and value ~= "left" and value ~= "right" then
+      value = fallback.button
     end
-    ConfigManager.save(current)
-end
+    
+    registry[reg_path] = value
+  end,
+  __tostring = function()
+    local lines = { "[Auto-Clicker-95 Config]" }
+    for k in pairs(key_map) do
+      table.insert(lines, string.format("  %s = %s", k, tostring(config[k])))
+    end
+    return table.concat(lines, "\n")
+  end
+})
 
-return ConfigManager
+return config

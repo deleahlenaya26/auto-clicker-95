@@ -1,65 +1,39 @@
-local core = {}
-local click_positions = {{x=100, y=100}, {x=200, y=200}}
-local pos_index = 1
-local stats_buffer = {}
-local buffer_size = 64
-for i = 1, buffer_size do
-  stats_buffer[i] = {time=0, count=0}
-end
-local buffer_index = 1
-local total_clicks = 0
-local function get_next_position()
-  local pos = click_positions[pos_index]
-  pos_index = pos_index % #click_positions + 1
-  return pos.x, pos.y
-end
-local function record_stat(click_time)
-  local entry = stats_buffer[buffer_index]
-  entry.time = click_time
-  entry.count = total_clicks
-  buffer_index = buffer_index % buffer_size + 1
-end
-function core.perform_clicks(clicks_per_second, duration_seconds)
-  local interval = 1.0 / clicks_per_second
-  local end_time = os.clock() + duration_seconds
-  local next_click = os.clock()
-  local clicks_done = 0
-  while os.clock() < end_time do
-    local now = os.clock()
-    if now >= next_click then
-      local x, y = get_next_position()
-      total_clicks = total_clicks + 1
-      clicks_done = clicks_done + 1
-      record_stat(now)
-      next_click = next_click + interval
+local defaults = {
+  interval = 0.05,
+  button = 'left',
+  jitter = 0.02,
+  enabled = true
+}
+
+local function deep_merge(target, source)
+  for k, v in pairs(source) do
+    if type(v) == 'table' then
+      target[k] = target[k] or {}
+      deep_merge(target[k], v)
+    else
+      target[k] = v
     end
   end
-  return clicks_done
+  return target
 end
-function core.get_average_click_rate()
-  local sum = 0
-  local count = 0
-  for i=1, buffer_size do
-    if stats_buffer[i].time > 0 then
-      sum = sum + stats_buffer[i].time
-      count = count + 1
-    end
+
+local function load_config(path)
+  local cfg = {}
+  local chunk, err = loadfile(path)
+  if chunk then
+    setfenv(chunk, cfg)
+    chunk()
   end
-  if count > 1 then
-    local first = stats_buffer[1].time
-    local last_idx = buffer_index - 1
-    if last_idx < 1 then last_idx = buffer_size end
-    local last = stats_buffer[last_idx].time
-    return (count - 1) / (last - first)
-  end
-  return 0
+  return deep_merge(defaults, cfg)
 end
-function core.reset_stats()
-  total_clicks = 0
-  buffer_index = 1
-  for i=1, buffer_size do
-    stats_buffer[i].time = 0
-    stats_buffer[i].count = 0
-  end
+
+local config = load_config('settings.lua')
+
+local function click_engine()
+  if not config.enabled then return end
+  local delay = math.max(0.01, config.interval + (math.random() * config.jitter))
+  print('clicking ' .. config.button .. ' with delay ' .. delay)
+  return delay
 end
-return core
+
+return { load = load_config, state = config, execute = click_engine }

@@ -1,49 +1,61 @@
-local registry = {
-  ["HKCU/Software/AutoClicker95/Settings/Interval"] = 100,
-  ["HKCU/Software/AutoClicker95/Settings/Button"] = "left",
-  ["HKCU/Software/AutoClicker95/Theme/Vaporwave"] = true
+local Config = {}
+Config.__index = Config
+
+local DEFAULTS = {
+    cps = 12,
+    jitter_ms = 15,
+    button = "left",
+    burst_mode = false,
+    hotkey = "F9",
+    win95_sound = true
 }
 
-local config = {}
-local fallback = {
-  interval = 100,
-  button = "left",
-  vaporwave = false
+local SANITIZERS = {
+    cps = function(v) return math.max(1, math.min(250, tonumber(v) or 12)) end,
+    jitter_ms = function(v) return math.max(0, math.min(100, tonumber(v) or 0)) end,
+    button = function(v) return (v == "right" or v == "middle") and v or "left" end,
+    burst_mode = function(v) return type(v) == "boolean" and v or false end,
+    hotkey = function(v) return type(v) == "string" and v:upper() or "F9" end,
+    win95_sound = function(v) return not not v end
 }
 
-local key_map = {
-  interval = "HKCU/Software/AutoClicker95/Settings/Interval",
-  button = "HKCU/Software/AutoClicker95/Settings/Button",
-  vaporwave = "HKCU/Software/AutoClicker95/Theme/Vaporwave"
-}
+function Config.new(overrides)
+    local store = {}
+    local proxy = setmetatable({}, {
+        __index = function(_, key)
+            if store[key] ~= nil then return store[key] end
+            return DEFAULTS[key]
+        end,
+        __newindex = function(_, key, val)
+            if SANITIZERS[key] then
+                store[key] = SANITIZERS[key](val)
+            else
+                rawset(store, key, val)
+            end
+        end
+    })
 
-setmetatable(config, {
-  __index = function(_, key)
-    local reg_path = key_map[key]
-    if reg_path and registry[reg_path] ~= nil then
-      return registry[reg_path]
+    if type(overrides) == "table" then
+        for k, v in pairs(overrides) do
+            proxy[k] = v
+        end
     end
-    return fallback[key]
-  end,
-  __newindex = function(_, key, value)
-    local reg_path = key_map[key]
-    if not reg_path then return end
-    
-    if key == "interval" and (type(value) ~= "number" or value < 1) then
-      value = fallback.interval
-    elseif key == "button" and value ~= "left" and value ~= "right" then
-      value = fallback.button
-    end
-    
-    registry[reg_path] = value
-  end,
-  __tostring = function()
-    local lines = { "[Auto-Clicker-95 Config]" }
-    for k in pairs(key_map) do
-      table.insert(lines, string.format("  %s = %s", k, tostring(config[k])))
-    end
-    return table.concat(lines, "\n")
-  end
-})
 
-return config
+    return proxy, store
+end
+
+function Config.export(proxy_instance, store)
+    local snapshot = {}
+    for k in pairs(DEFAULTS) do
+        snapshot[k] = proxy_instance[k]
+    end
+    return snapshot
+end
+
+function Config.purge(store)
+    for k in pairs(store) do
+        store[k] = nil
+    end
+end
+
+return Config

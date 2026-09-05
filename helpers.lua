@@ -1,35 +1,34 @@
 local helpers = {}
 
-function helpers.serialize_click_profile(profile)
-    local stream = { "-- AUTOCLICKER-95 SCHEMA v1 --" }
-    for k, v in pairs(profile) do
-        if type(v) == "string" then
-            table.insert(stream, string.format('%s = "%s"', k, v))
-        else
-            table.insert(stream, string.format('%s = %s', k, tostring(v)))
-        end
+function helpers.serialize(data)
+    local chunks = {'return {'}
+    for k, v in pairs(data) do
+        local val = type(v) == 'string' and string.format('%q', v) or tostring(v)
+        table.insert(chunks, string.format('  [%q] = %s,', tostring(k), val))
     end
-    return table.concat(stream, "\n")
+    table.insert(chunks, '}')
+    return table.concat(chunks, '\n')
 end
 
-function helpers.deserialize_click_profile(data)
-    local profile = {}
-    for line in data:gmatch("([^\n]+)") do
-        if not line:match("^--") then
-            local key, val = line:match("(%w+)%s*=%s*(.+)")
-            if key then
-                val = val:gsub('"', '')
-                profile[key] = tonumber(val) or val
-            end
-        end
-    end
-    return profile
+function helpers.deserialize(raw)
+    local func, err = load(raw)
+    if not func then return nil, err end
+    return func()
 end
 
-function helpers.validate_interval(ms)
-    local min_latency = 10
-    local max_latency = 60000
-    return math.max(min_latency, math.min(ms, max_latency))
+function helpers.sanitize_path(path)
+    local clean = string.gsub(path, '[^%w%./_-]', '')
+    return './data/' .. clean .. '.lua'
+end
+
+function helpers.save_profile(name, cfg)
+    local file = io.open(helpers.sanitize_path(name), 'w')
+    if file then
+        file:write(helpers.serialize(cfg))
+        file:close()
+        return true
+    end
+    return false
 end
 
 return helpers

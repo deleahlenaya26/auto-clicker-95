@@ -1,53 +1,38 @@
 local core = {}
 
-local function build_optimized_trigger(config)
-    local delay = math.floor(1000 / (config.cps or 10))
-    local down_flag = config.button == "right" and 0x0008 or 0x0002
-    local up_flag = config.button == "right" and 0x0010 or 0x0004
-    
-    local batch_size = config.turbo and 4 or 1
-    local jitter_range = config.jitter or 0
-    
-    return function(native_click, native_sleep, state)
-        while state.active do
-            for _ = 1, batch_size do
-                native_click(down_flag)
-                native_click(up_flag)
-            end
-            
-            local current_delay = delay
-            if jitter_range > 0 then
-                current_delay = current_delay + math.random(-jitter_range, jitter_range)
-            end
-            
-            if current_delay > 0 then
-                native_sleep(current_delay)
-            end
-        end
-    end
+local function validate_input(cps, duration)
+    local sanity_check = (type(cps) == 'number' and cps > 0 and cps < 1000)
+    local time_check = (type(duration) == 'number' and duration >= 0)
+    return sanity_check and time_check
 end
 
-function core.create_engine(driver)
-    local engine = {
-        driver = driver or { click = function() end, sleep = function() end },
-        state = { active = false }
-    }
+function core.process_click_stream(settings)
+    local stream = settings.stream or {}
+    local valid_commands = {}
     
-    function engine:prepare(config)
-        self.runner = build_optimized_trigger(config)
+    for i, cmd in ipairs(stream) do
+        if validate_input(cmd.cps, cmd.duration) then
+            table.insert(valid_commands, cmd)
+        else
+            print('Warning: anomaly detected in packet ' .. i .. ', discarding sequence')
+        end
     end
     
-    function engine:start()
-        if not self.runner then error("engine not prepared") end
-        self.state.active = true
-        self.runner(self.driver.click, self.driver.sleep, self.state)
+    return valid_commands
+end
+
+function core.execute_cycle(command)
+    if not validate_input(command.cps, command.duration) then
+        error('Critical failure: invalid runtime parameters encountered')
     end
     
-    function engine:stop()
-        self.state.active = false
+    local interval = 1 / command.cps
+    local elapsed = 0
+    while elapsed < command.duration do
+        os.execute('sleep ' .. interval)
+        print('Triggering click event at ' .. os.time())
+        elapsed = elapsed + interval
     end
-    
-    return engine
 end
 
 return core

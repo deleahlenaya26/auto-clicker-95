@@ -1,35 +1,35 @@
-local logger = {}
-local max_size = 1024 * 512
-local log_path = 'clicker.log'
+local fs = require('fs')
+local os = require('os')
 
-function logger.rotate()
-    local f = io.open(log_path, 'r')
-    if f then
-        local content = f:read('*a')
-        f:close()
-        local backup = io.open(log_path .. '.old', 'w')
-        if backup then
-            backup:write(content)
-            backup:close()
-        end
-        os.remove(log_path)
-    end
+local log_config = {
+  path = 'autoclicker.log',
+  max_size = 1024 * 512, -- 512KB
+  backup_suffix = '.old'
+}
+
+local function rotate_logs()
+  local info = fs.stat(log_config.path)
+  if info and info.size > log_config.max_size then
+    fs.rename(log_config.path, log_config.path .. log_config.backup_suffix)
+  end
 end
 
-function logger.log(message)
-    local f = io.open(log_path, 'a')
-    if f then
-        local pos = f:seek('end')
-        if pos > max_size then
-            f:close()
-            logger.rotate()
-            f = io.open(log_path, 'a')
-        end
-        local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-        f:write(string.format('[%s] %s\n', timestamp, message))
-        f:close()
-    end
+local function logger(level, message)
+  rotate_logs()
+  local timestamp = os.date('%Y-%m-%d %H:%M:%S')
+  local entry = string.format('[%s] [%s] %s\n', timestamp, level, message)
+  
+  local file, err = io.open(log_config.path, 'a')
+  if file then
+    file:write(entry)
+    file:close()
+  else
+    io.stderr:write('Log access failure: ' .. tostring(err) .. '\n')
+  end
 end
 
-logger.log('auto-clicker-95 session initialized')
-return logger
+-- Exporting the logger utility
+return {
+  info = function(msg) logger('INFO', msg) end,
+  error = function(msg) logger('ERROR', msg) end
+}

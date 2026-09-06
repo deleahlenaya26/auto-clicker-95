@@ -1,34 +1,66 @@
 local utils = {}
 
-local function exponential_backoff(attempt)
-  return math.pow(2, attempt) + (math.random() * 0.5)
+local MIN_INTERVAL_MS = 1
+local MAX_INTERVAL_MS = 3600000
+local DEFAULT_FALLBACK_MS = 100
+
+local function sanitize_interval(ms)
+    if type(ms) ~= "number" or ms ~= ms then
+        return DEFAULT_FALLBACK_MS, "invalid type or NaN interval detected"
+    end
+    if ms < MIN_INTERVAL_MS then
+        return MIN_INTERVAL_MS, "interval clamped to minimum threshold"
+    end
+    if ms > MAX_INTERVAL_MS then
+        return MAX_INTERVAL_MS, "interval clamped to maximum cap"
+    end
+    return math.floor(ms + 0.5), nil
 end
 
-function utils.retry_network_op(func, max_attempts)
-  local last_error
-  for attempt = 0, max_attempts or 3 do
-    local success, result = pcall(func)
-    if success then
-      return result
-    end
+function utils.guarded_execute(action_fn, interval_ms, onError)
+    local safe_ms, edge_warning = sanitize_interval(interval_ms)
     
-    last_error = result
-    if attempt < (max_attempts or 3) then
-      local delay = exponential_backoff(attempt)
-      local start = os.clock()
-      while os.clock() - start < delay do end
+    if edge_warning and type(onError) == "function" then
+        pcall(onError, edge_warning, safe_ms)
     end
-  end
-  
-  error("network operation failed after retries: " .. tostring(last_error))
+
+    if type(action_fn) ~= "function" then
+        return false, "target action is not executable"
+    end
+
+    local status, err = xpcall(action_fn, function(e)
+        return debug and debug.traceback and debug.traceback(e, 2) or tostring(e)
+    end)
+
+    if not status then
+        local log_msg = string.format("[AutoClicker95:Fault] %s | SafeDelay: %dms", tostring(err), safe_ms)
+        if type(onError) == "function" then
+            pcall(onError, log_msg, safe_ms)
+        end
+        return false, log_msg
+    end
+
+    return true, safe_ms
 end
 
-function utils.safe_fetch(url, callback)
-  return utils.retry_network_op(function()
-    local response = http.request(url)
-    if not response then error("connection timeout") end
-    return callback(response)
-  end, 5)
+function utils.create_safe_counter(max_clicks)
+    local count = 0
+    local limit = tonumber(max_clicks) or math.huge
+    if limit < 0 then limit = math.huge end
+
+    return setmetatable({}, {
+        __call = function(_, step)
+            local delta = tonumber(step) or 1
+            if delta <= 0 then delta = 1 end
+            if count >= limit then return false, "click limit reached" end
+            count = count + delta
+            return true, count
+        end,
+        __index = {
+            reset = function() count = 0 end,
+            get = function() return count end
+        }
+    })
 end
 
 return utils

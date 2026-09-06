@@ -1,37 +1,38 @@
 local core = {}
 
-local function validate_input(cps, duration)
-    local sanity_check = (type(cps) == 'number' and cps > 0 and cps < 1000)
-    local time_check = (type(duration) == 'number' and duration >= 0)
-    return sanity_check and time_check
+local click_queue = {}
+local queue_ptr = 1
+local max_buffer = 1024
+
+function core.enqueue_event(x, y)
+    click_queue[queue_ptr] = {x = x, y = y}
+    queue_ptr = (queue_ptr % max_buffer) + 1
 end
 
-function core.process_click_stream(settings)
-    local stream = settings.stream or {}
-    local valid_commands = {}
+function core.process_batch()
+    local start = queue_ptr
+    local batch = {}
+    local count = 0
     
-    for i, cmd in ipairs(stream) do
-        if validate_input(cmd.cps, cmd.duration) then
-            table.insert(valid_commands, cmd)
-        else
-            print('Warning: anomaly detected in packet ' .. i .. ', discarding sequence')
+    for i = 1, max_buffer do
+        local idx = (start + i - 2) % max_buffer + 1
+        if click_queue[idx] then
+            batch[#batch + 1] = click_queue[idx]
+            click_queue[idx] = nil
+            count = count + 1
         end
     end
     
-    return valid_commands
+    if count > 0 then
+        native_send_click_burst(batch)
+    end
 end
 
-function core.execute_cycle(command)
-    if not validate_input(command.cps, command.duration) then
-        error('Critical failure: invalid runtime parameters encountered')
-    end
-    
-    local interval = 1 / command.cps
-    local elapsed = 0
-    while elapsed < command.duration do
-        os.execute('sleep ' .. interval)
-        print('Triggering click event at ' .. os.time())
-        elapsed = elapsed + interval
+function core.run_optimized_loop()
+    while true do
+        core.process_batch()
+        local status, err = pcall(coroutine.yield)
+        if not status then break end
     end
 end
 

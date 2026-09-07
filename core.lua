@@ -1,38 +1,35 @@
 local core = {}
 
-local click_queue = {}
-local queue_ptr = 1
-local max_buffer = 1024
-
-function core.enqueue_event(x, y)
-    click_queue[queue_ptr] = {x = x, y = y}
-    queue_ptr = (queue_ptr % max_buffer) + 1
-end
-
-function core.process_batch()
-    local start = queue_ptr
-    local batch = {}
-    local count = 0
-    
-    for i = 1, max_buffer do
-        local idx = (start + i - 2) % max_buffer + 1
-        if click_queue[idx] then
-            batch[#batch + 1] = click_queue[idx]
-            click_queue[idx] = nil
-            count = count + 1
-        end
-    end
-    
-    if count > 0 then
-        native_send_click_burst(batch)
-    end
-end
-
-function core.run_optimized_loop()
+core.event_loop = function(interval, task)
+    local timer = os.clock()
     while true do
-        core.process_batch()
-        local status, err = pcall(coroutine.yield)
-        if not status then break end
+        if os.clock() - timer >= interval then
+            task()
+            timer = os.clock()
+        end
+        os.execute('sleep 0.001')
+    end
+end
+
+core.safe_click = function(x, y, btn)
+    local cmd = string.format('xdotool mousemove %d %d click %d', x, y, btn or 1)
+    local status = os.execute(cmd)
+    return status == 0
+end
+
+core.jitter = function(val, range)
+    return val + math.random(-range, range)
+end
+
+core.random_wait = function(min, max)
+    local duration = min + math.random() * (max - min)
+    os.execute(string.format('sleep %f', duration))
+end
+
+core.click_sequence = function(coords)
+    for _, pos in ipairs(coords) do
+        core.safe_click(pos.x, pos.y, pos.btn)
+        core.random_wait(0.05, 0.2)
     end
 end
 

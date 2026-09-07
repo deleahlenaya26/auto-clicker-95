@@ -1,35 +1,30 @@
-local fs = require('fs')
-local os = require('os')
+local logger = {}
+local log_path = 'auto_clicker.log'
+local max_size = 1024 * 1024
 
-local log_config = {
-  path = 'autoclicker.log',
-  max_size = 1024 * 512, -- 512KB
-  backup_suffix = '.old'
-}
-
-local function rotate_logs()
-  local info = fs.stat(log_config.path)
-  if info and info.size > log_config.max_size then
-    fs.rename(log_config.path, log_config.path .. log_config.backup_suffix)
-  end
+local function rotate()
+    local f = io.open(log_path, 'r')
+    if f then
+        f:close()
+        os.rename(log_path, log_path .. '.old')
+    end
 end
 
-local function logger(level, message)
-  rotate_logs()
-  local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-  local entry = string.format('[%s] [%s] %s\n', timestamp, level, message)
-  
-  local file, err = io.open(log_config.path, 'a')
-  if file then
-    file:write(entry)
-    file:close()
-  else
-    io.stderr:write('Log access failure: ' .. tostring(err) .. '\n')
-  end
+function logger.info(msg)
+    local f = io.open(log_path, 'a')
+    if f then
+        local size = f:seek('end')
+        if size > max_size then
+            f:close()
+            rotate()
+            f = io.open(log_path, 'a')
+        end
+        if f then
+            f:write(os.date('%Y-%m-%d %H:%M:%S') .. ' [INFO] ' .. msg .. '\n')
+            f:close()
+        end
+    end
 end
 
--- Exporting the logger utility
-return {
-  info = function(msg) logger('INFO', msg) end,
-  error = function(msg) logger('ERROR', msg) end
-}
+logger.info('engine initialized, standing by for clicks')
+return logger

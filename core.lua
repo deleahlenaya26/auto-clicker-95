@@ -1,36 +1,47 @@
 local core = {}
+core.__index = core
 
-core.event_loop = function(interval, task)
-    local timer = os.clock()
-    while true do
-        if os.clock() - timer >= interval then
-            task()
-            timer = os.clock()
-        end
-        os.execute('sleep 0.001')
+local function create_jitter_generator(base_cps, variance)
+    return function()
+        local interval = 1.0 / base_cps
+        local delta = (math.random() * 2 - 1) * variance
+        return math.max(0.001, interval + delta)
     end
 end
 
-core.safe_click = function(x, y, btn)
-    local cmd = string.format('xdotool mousemove %d %d click %d', x, y, btn or 1)
-    local status = os.execute(cmd)
-    return status == 0
+function core.new(config)
+    local cfg = config or {}
+    local self = setmetatable({}, core)
+    self.cps = cfg.cps or 10
+    self.jitter = cfg.jitter or 0.02
+    self.active = false
+    self.total_clicks = 0
+    self.next_interval = create_jitter_generator(self.cps, self.jitter)
+    return self
 end
 
-core.jitter = function(val, range)
-    return val + math.random(-range, range)
+function core:step(click_fn)
+    if not self.active then return false, 0 end
+    
+    self.total_clicks = self.total_clicks + 1
+    if click_fn then click_fn(self.total_clicks) end
+    
+    return true, self.next_interval()
 end
 
-core.random_wait = function(min, max)
-    local duration = min + math.random() * (max - min)
-    os.execute(string.format('sleep %f', duration))
-end
-
-core.click_sequence = function(coords)
-    for _, pos in ipairs(coords) do
-        core.safe_click(pos.x, pos.y, pos.btn)
-        core.random_wait(0.05, 0.2)
+function core:toggle(state)
+    if state == nil then
+        self.active = not self.active
+    else
+        self.active = state
     end
+    return self.active
+end
+
+function core:reset()
+    self.total_clicks = 0
+    self.active = false
+    return self
 end
 
 return core

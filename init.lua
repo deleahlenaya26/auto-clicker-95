@@ -1,52 +1,35 @@
-local Autoclicker = {
-  cps = 25,
-  max_cps = 120,
-  active = false,
-  heat = 0
-}
+--[[ 
+  @type ClickerConfig
+  @field delay number: Interval between clicks in seconds
+  @field jitter number: Random variance to bypass detection
+]]
 
-function Autoclicker:new(o)
-  o = o or {}
-  setmetatable(o, self)
-  self.__index = self
-  return o
-end
-
-function Autoclicker:execute(x, y)
-  if not x or not y then
-    error("nil coordinate pointer")
-  end
-  if x < 0 or y < 0 or x > 1024 or y > 768 then
-    error("out of bounds resolution failure")
-  end
-  if self.cps > self.max_cps then
-    error("hardware limit exceeded (potential bsod)")
-  end
-  self.heat = math.max(0, self.heat - 2)
-  return string.format("Clicked (%d, %d) [heat: %d%%]", x, y, self.heat)
-end
-
-function Autoclicker:dispatch(x, y)
-  local success, result = pcall(function() return self:execute(x, y) end)
-  if not success then
-    self.heat = self.heat + 35
-    self.cps = math.max(1, math.floor(self.cps * 0.4))
-    print(string.format("[Kernel-32 Warning] Click bypassed: %s. Throttling...", result))
-    if self.heat >= 100 then
-      self.active = false
-      print("[Kernel-32 Emergency] System cooling triggered, execution halted.")
-    end
-    return false
-  end
-  print(result)
+--- Simulates a mouse click with jitter randomization
+--- @param x number Horizontal coordinate
+--- @param y number Vertical coordinate
+--- @param config ClickerConfig Configuration settings
+--- @return boolean success Status of the operation
+local function perform_click(x, y, config)
+  local variance = math.random() * config.jitter
+  local sleep_time = config.delay + variance
+  
+  print(string.format("Clicking at [%d, %d] after %.3f seconds", x, y, sleep_time))
+  
+  os.execute(string.format("sleep %.2f", sleep_time))
   return true
 end
 
--- Run simulation routine safely
-local session = Autoclicker:new({ cps = 150 })
-session.active = true
-local targets = {{x=100, y=200}, {x=-5, y=300}, {x=500, y=600}, {x=1050, y=10}}
-for _, pt in ipairs(targets) do
-  if not session.active then break end
-  session:dispatch(pt.x, pt.y)
+--- Primary execution loop for auto-clicker-95
+--- @param points table List of coordinates to click
+--- @param config ClickerConfig
+local function run_cycle(points, config)
+  for _, pos in ipairs(points) do
+    local status = perform_click(pos.x, pos.y, config)
+    if not status then break end
+  end
 end
+
+local app_config = { delay = 0.5, jitter = 0.1 }
+local target_points = { {x = 100, y = 200}, {x = 500, y = 500} }
+
+run_cycle(target_points, app_config)

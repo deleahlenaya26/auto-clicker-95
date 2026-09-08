@@ -1,33 +1,37 @@
-local ffi = require('ffi')
-ffi.cdef[[
-    typedef struct { long x; long y; } point_t;
-    void SetCursorPos(int x, int y);
-    void mouse_event(int flags, int dx, int dy, int data, unsigned long extra);
-]]
+local Helpers = {}
 
-local user32 = ffi.load('user32')
-local MOUSEEVENTF_LEFTDOWN = 0x0002
-local MOUSEEVENTF_LEFTUP = 0x0004
-
-local helpers = {}
-
-function helpers.optimized_click(x, y)
-    user32.SetCursorPos(x, y)
-    user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
-    user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+local function get_timestamp()
+  return os.date('%H:%M:%S')
 end
 
-local click_cache = {}
-function helpers.memoized_coords(x, y)
-    local key = string.format('%d:%d', x, y)
-    if not click_cache[key] then
-        click_cache[key] = {x = x, y = y}
-    end
-    return click_cache[key]
+Helpers.log = function(message, level)
+  level = level or 'INFO'
+  print(string.format('[%s][%s] %s', get_timestamp(), level, message))
 end
 
-function helpers.clear_cache()
-    click_cache = {}
+Helpers.clamp = function(val, min, max)
+  return math.max(min, math.min(max, val))
 end
 
-return helpers
+Helpers.format_delay = function(ms)
+  local seconds = ms / 1000
+  return string.format('%.2fs', seconds)
+end
+
+Helpers.serialize_config = function(tbl)
+  local s = '{ '
+  for k, v in pairs(tbl) do
+    s = s .. tostring(k) .. ' = ' .. tostring(v) .. ', '
+  end
+  return s .. '}'
+end
+
+Helpers.safe_execute = function(func, ...)
+  local status, err = pcall(func, ...)
+  if not status then
+    Helpers.log('Execution failure: ' .. tostring(err), 'ERROR')
+  end
+  return status
+end
+
+return Helpers

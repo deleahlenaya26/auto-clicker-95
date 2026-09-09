@@ -1,27 +1,40 @@
-local logger = {}
+local utils = {}
 
-local function rotate(path, max_size)
-    local file = io.open(path, 'r')
-    if not file then return end
-    local size = file:seek('end')
-    file:close()
-    if size > max_size then
-        os.remove(path .. '.old')
-        os.rename(path, path .. '.old')
+function utils.throttle(func, delay)
+    local last = 0
+    return function(...)
+        local now = os.time()
+        if now - last >= delay then
+            last = now
+            return func(...)
+        end
     end
 end
 
-function logger.log(message)
-    local path = 'autoclicker.log'
-    rotate(path, 1024 * 100)
-    local file = io.open(path, 'a')
-    if file then
-        local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-        file:write(string.format('[%s] %s\n', timestamp, message))
-        file:close()
-    end
+function utils.random_jitter(base, range)
+    math.randomseed(os.time())
+    return base + math.random(-range, range)
 end
 
-logger.log('system initialized')
+function utils.pack_click(x, y, btn)
+    return {pos = {x = x, y = y}, button = btn or 1, ts = os.time()}
+end
 
-return logger
+function utils.serialize_session(data)
+    local s = ""
+    for k, v in pairs(data) do
+        s = s .. tostring(k) .. "=" .. tostring(v) .. ";"
+    end
+    return s
+end
+
+function utils.safe_execute(task, ...)
+    local status, result = pcall(task, ...)
+    if not status then
+        print("[CRITICAL] operation failed: " .. tostring(result))
+        return nil
+    end
+    return result
+end
+
+return utils

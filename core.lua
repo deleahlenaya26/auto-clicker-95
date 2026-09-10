@@ -1,29 +1,36 @@
-local core = {}
+--[[ 
+  @module core
+  @description high-frequency simulation engine for auto-clicker-95
+]]
 
-local function validate_input(input)
-    local type_map = {number = true, boolean = true}
-    if not type_map[type(input)] then
-        error("non-compliant data structure detected")
-    end
-    return input
+---@class ClickEngine
+---@field interval number The delay between clicks in seconds
+---@field running boolean State of the simulation loop
+local ClickEngine = {}
+
+---@type ClickEngine
+local instance = {interval = 0.01, running = false}
+
+---@param delay number
+---@return boolean success
+function instance:set_speed(delay)
+  if delay < 0.001 then return false end
+  self.interval = delay
+  return true
 end
 
-function core.process_loop(cps_target, is_enabled)
-    local safety_threshold = 1000
-    
-    local status, validated_cps = pcall(validate_input, cps_target)
-    local _, validated_state = pcall(validate_input, is_enabled)
-    
-    if not status or validated_cps > safety_threshold then
-        return false
-    end
-
-    if validated_state then
-        local interval = 1 / validated_cps
-        return true, interval
-    end
-    
-    return false, 0
+---@param duration number
+---@return nil
+function instance:execute_burst(duration)
+  local stop_time = os.clock() + duration
+  self.running = true
+  
+  while self.running and os.clock() < stop_time do
+    -- Simulated system event: mouse_event(MOUSEEVENTF_LEFTDOWN)
+    os.execute("sleep " .. self.interval)
+  end
+  
+  self.running = false
 end
 
-return core
+return instance

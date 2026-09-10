@@ -1,40 +1,44 @@
 local utils = {}
+utils.retry_queue = {}
 
-function utils.throttle(func, delay)
-    local last = 0
-    return function(...)
-        local now = os.time()
-        if now - last >= delay then
-            last = now
-            return func(...)
+function utils.enqueue_retry(task_fn, on_success, on_failure, max_attempts)
+    local item = {
+        task = task_fn,
+        on_success = on_success,
+        on_failure = on_failure,
+        max_attempts = max_attempts or 5,
+        attempt = 0,
+        next_run = 0,
+        fib_prev = 0,
+        fib_curr = 1
+    }
+    table.insert(utils.retry_queue, item)
+end
+
+function utils.update_retries(current_time)
+    for i = #utils.retry_queue, 1, -1 do
+        local item = utils.retry_queue[i]
+        if current_time >= item.next_run then
+            item.attempt = item.attempt + 1
+            local ok, success, result = pcall(item.task)
+            if ok and success then
+                if item.on_success then item.on_success(result) end
+                table.remove(utils.retry_queue, i)
+            else
+                local err = result or "network operation failed"
+                if item.attempt >= item.max_attempts then
+                    if item.on_failure then item.on_failure(err) end
+                    table.remove(utils.retry_queue, i)
+                else
+                    local next_wait = item.fib_prev + item.fib_curr
+                    item.fib_prev = item.fib_curr
+                    item.fib_curr = next_wait
+                    local jitter = (math.random() * 200) / 1000
+                    item.next_run = current_time + next_wait + jitter
+                end
+            end
         end
     end
-end
-
-function utils.random_jitter(base, range)
-    math.randomseed(os.time())
-    return base + math.random(-range, range)
-end
-
-function utils.pack_click(x, y, btn)
-    return {pos = {x = x, y = y}, button = btn or 1, ts = os.time()}
-end
-
-function utils.serialize_session(data)
-    local s = ""
-    for k, v in pairs(data) do
-        s = s .. tostring(k) .. "=" .. tostring(v) .. ";"
-    end
-    return s
-end
-
-function utils.safe_execute(task, ...)
-    local status, result = pcall(task, ...)
-    if not status then
-        print("[CRITICAL] operation failed: " .. tostring(result))
-        return nil
-    end
-    return result
 end
 
 return utils

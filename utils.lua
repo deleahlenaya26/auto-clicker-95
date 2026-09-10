@@ -1,44 +1,38 @@
 local utils = {}
-utils.retry_queue = {}
 
-function utils.enqueue_retry(task_fn, on_success, on_failure, max_attempts)
-    local item = {
-        task = task_fn,
-        on_success = on_success,
-        on_failure = on_failure,
-        max_attempts = max_attempts or 5,
-        attempt = 0,
-        next_run = 0,
-        fib_prev = 0,
-        fib_curr = 1
-    }
-    table.insert(utils.retry_queue, item)
+local cache = setmetatable({}, {__mode = 'v'})
+local click_patterns = {fast = 0.001, moderate = 0.05, slow = 0.1}
+
+function utils.get_optimized_interval(mode)
+  if cache[mode] then return cache[mode] end
+  local interval = click_patterns[mode] or 0.05
+  cache[mode] = interval
+  return interval
 end
 
-function utils.update_retries(current_time)
-    for i = #utils.retry_queue, 1, -1 do
-        local item = utils.retry_queue[i]
-        if current_time >= item.next_run then
-            item.attempt = item.attempt + 1
-            local ok, success, result = pcall(item.task)
-            if ok and success then
-                if item.on_success then item.on_success(result) end
-                table.remove(utils.retry_queue, i)
-            else
-                local err = result or "network operation failed"
-                if item.attempt >= item.max_attempts then
-                    if item.on_failure then item.on_failure(err) end
-                    table.remove(utils.retry_queue, i)
-                else
-                    local next_wait = item.fib_prev + item.fib_curr
-                    item.fib_prev = item.fib_curr
-                    item.fib_curr = next_wait
-                    local jitter = (math.random() * 200) / 1000
-                    item.next_run = current_time + next_wait + jitter
-                end
-            end
-        end
+function utils.batch_processor(data, chunk_size)
+  local i, j, k = 1, #data, 1
+  local chunks = {}
+  chunk_size = chunk_size or 100
+  while i <= j do
+    local end_idx = math.min(i + chunk_size - 1, j)
+    local slice = {}
+    for n = i, end_idx do
+      table.insert(slice, data[n])
     end
+    chunks[k] = slice
+    i = end_idx + 1
+    k = k + 1
+  end
+  return chunks
+end
+
+function utils.memoize_coordinates(x, y)
+  local key = string.format('%d:%d', x, y)
+  if not cache[key] then
+    cache[key] = {x = x, y = y, timestamp = os.time()}
+  end
+  return cache[key]
 end
 
 return utils

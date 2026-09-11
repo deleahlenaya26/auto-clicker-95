@@ -1,48 +1,31 @@
--- @module core
--- @description primary click execution engine for auto-clicker-95
+local logger = {}
 
---- @class ClickerState
---- @field interval number
---- @field enabled boolean
-
---- @type ClickerState
-local state = {
-    interval = 0.05,
-    enabled = false
-}
-
---- triggers a simulated mouse click event
---- @param x number
---- @param y number
---- @return boolean success
-local function execute_click(x, y)
-    if not state.enabled then return false end
-    -- platform-specific mouse event injection
-    print(string.format("injecting click at %d, %d", x, y))
-    return true
+local function get_timestamp()
+    return os.date('%Y-%m-%d_%H-%M-%S')
 end
 
---- primary loop handler for scheduled clicks
---- @param x number
---- @param y number
---- @param duration number total time in seconds
---- @return nil
-local function run_cycle(x, y, duration)
-    local start = os.clock()
-    while (os.clock() - start) < duration do
-        if execute_click(x, y) then
-            os.execute(string.format("sleep %f", state.interval))
-        end
+function logger.rotate(log_path, max_size)
+    local file = io.open(log_path, 'r')
+    if not file then return end
+    local size = file:seek('end')
+    file:close()
+
+    if size > (max_size or 1048576) then
+        os.rename(log_path, log_path .. '.' .. get_timestamp() .. '.old')
     end
 end
 
---- configuration updates for the engine
---- @param new_interval number
---- @param active boolean
---- @return nil
-local function configure(new_interval, active)
-    state.interval = new_interval or 0.05
-    state.enabled = active
+function logger.log(message)
+    local log_path = 'autoclicker.log'
+    logger.rotate(log_path, 512000)
+
+    local file = io.open(log_path, 'a')
+    if file then
+        file:write(string.format('[%s] %s\n', get_timestamp(), message))
+        file:close()
+    end
 end
 
-return { run = run_cycle, set = configure }
+logger.log('system initialized: auto-clicker-95 operational')
+
+return logger

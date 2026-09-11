@@ -1,36 +1,48 @@
---[[ 
-  @module core
-  @description high-frequency simulation engine for auto-clicker-95
-]]
+-- @module core
+-- @description primary click execution engine for auto-clicker-95
 
----@class ClickEngine
----@field interval number The delay between clicks in seconds
----@field running boolean State of the simulation loop
-local ClickEngine = {}
+--- @class ClickerState
+--- @field interval number
+--- @field enabled boolean
 
----@type ClickEngine
-local instance = {interval = 0.01, running = false}
+--- @type ClickerState
+local state = {
+    interval = 0.05,
+    enabled = false
+}
 
----@param delay number
----@return boolean success
-function instance:set_speed(delay)
-  if delay < 0.001 then return false end
-  self.interval = delay
-  return true
+--- triggers a simulated mouse click event
+--- @param x number
+--- @param y number
+--- @return boolean success
+local function execute_click(x, y)
+    if not state.enabled then return false end
+    -- platform-specific mouse event injection
+    print(string.format("injecting click at %d, %d", x, y))
+    return true
 end
 
----@param duration number
----@return nil
-function instance:execute_burst(duration)
-  local stop_time = os.clock() + duration
-  self.running = true
-  
-  while self.running and os.clock() < stop_time do
-    -- Simulated system event: mouse_event(MOUSEEVENTF_LEFTDOWN)
-    os.execute("sleep " .. self.interval)
-  end
-  
-  self.running = false
+--- primary loop handler for scheduled clicks
+--- @param x number
+--- @param y number
+--- @param duration number total time in seconds
+--- @return nil
+local function run_cycle(x, y, duration)
+    local start = os.clock()
+    while (os.clock() - start) < duration do
+        if execute_click(x, y) then
+            os.execute(string.format("sleep %f", state.interval))
+        end
+    end
 end
 
-return instance
+--- configuration updates for the engine
+--- @param new_interval number
+--- @param active boolean
+--- @return nil
+local function configure(new_interval, active)
+    state.interval = new_interval or 0.05
+    state.enabled = active
+end
+
+return { run = run_cycle, set = configure }

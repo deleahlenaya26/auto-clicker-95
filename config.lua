@@ -1,27 +1,28 @@
-local Config = {}
+local default_cfg = {
+    interval = 100,
+    button = 1,
+    toggle_key = "F6",
+    mode = "random"
+}
 
-local function derive_settings()
-    local meta = { clicks_per_tick = 5, jitter_ms = 12 }
-    return setmetatable({}, { 
-        __index = meta, 
-        __newindex = function(_, k, v) error("config locked: " .. k) end 
-    })
-end
+local config = {}
 
-Config.data = derive_settings()
-Config.paths = { logs = "./logs/clicks.log", state = "./bin/state.dat" }
+function config.load(path)
+    local settings = setmetatable({}, { __index = default_cfg })
+    local file = io.open(path, "r")
+    if not file then return settings end
 
-function Config.validate(input)
-    if type(input) ~= "table" then return false end
-    return input.clicks_per_tick > 0
-end
+    local chunk = file:read("*a")
+    file:close()
 
-function Config.export()
-    local serialized = ""
-    for k, v in pairs(Config.data) do
-        serialized = serialized .. k .. "=" .. tostring(v) .. ";"
+    local loaded = loadstring("return " .. chunk)
+    if loaded then
+        local user_data = loaded()
+        for k, v in pairs(user_data) do
+            settings[k] = v
+        end
     end
-    return serialized
+    return settings
 end
 
-return Config
+return config

@@ -1,38 +1,44 @@
 local utils = {}
 
-local cache = setmetatable({}, {__mode = 'v'})
-local click_patterns = {fast = 0.001, moderate = 0.05, slow = 0.1}
-
-function utils.get_optimized_interval(mode)
-  if cache[mode] then return cache[mode] end
-  local interval = click_patterns[mode] or 0.05
-  cache[mode] = interval
-  return interval
-end
-
-function utils.batch_processor(data, chunk_size)
-  local i, j, k = 1, #data, 1
-  local chunks = {}
-  chunk_size = chunk_size or 100
-  while i <= j do
-    local end_idx = math.min(i + chunk_size - 1, j)
-    local slice = {}
-    for n = i, end_idx do
-      table.insert(slice, data[n])
+local JitterMeta = {
+    __index = function(t, key)
+        if key == "next_interval" then
+            local base = t.base_ms
+            local dev = t.variance or 0
+            return math.max(1, base + (math.random() * dev * 2 - dev))
+        end
     end
-    chunks[k] = slice
-    i = end_idx + 1
-    k = k + 1
-  end
-  return chunks
+}
+
+function utils.create_jitter_timer(base_ms, variance)
+    return setmetatable({ base_ms = base_ms, variance = variance }, JitterMeta)
 end
 
-function utils.memoize_coordinates(x, y)
-  local key = string.format('%d:%d', x, y)
-  if not cache[key] then
-    cache[key] = {x = x, y = y, timestamp = os.time()}
-  end
-  return cache[key]
+function utils.cps_to_ms(cps)
+    if type(cps) ~= "number" or cps <= 0 then return 100 end
+    return 1000 / cps
+end
+
+function utils.pulse(fn, interval_ms)
+    local last_tick = 0
+    return function(...)
+        local now = os.clock() * 1000
+        if (now - last_tick) >= interval_ms then
+            last_tick = now
+            return true, fn(...)
+        end
+        return false, nil
+    end
+end
+
+function utils.humanize_coords(x, y, radius)
+    radius = radius or 3
+    local r1, r2 = math.random(), math.random()
+    local theta = 2 * math.pi * r1
+    local rho = math.sqrt(-2 * math.log(r2 + 1e-9)) * (radius / 3)
+    local dx = math.floor(rho * math.cos(theta) + 0.5)
+    local dy = math.floor(rho * math.sin(theta) + 0.5)
+    return x + dx, y + dy
 end
 
 return utils

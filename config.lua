@@ -1,28 +1,37 @@
-local default_cfg = {
-    interval = 100,
-    button = 1,
-    toggle_key = "F6",
-    mode = "random"
+local fs = require('fs')
+
+local defaults = {
+  click_interval = 0.05,
+  hotkey = 'F8',
+  mode = 'toggle',
+  randomize = true
 }
 
-local config = {}
+local function load_config(path)
+  local config = {}
+  for k, v in pairs(defaults) do
+    config[k] = v
+  end
 
-function config.load(path)
-    local settings = setmetatable({}, { __index = default_cfg })
-    local file = io.open(path, "r")
-    if not file then return settings end
+  local ok, data = pcall(fs.read_file, path)
+  if not ok then return config end
 
-    local chunk = file:read("*a")
-    file:close()
-
-    local loaded = loadstring("return " .. chunk)
-    if loaded then
-        local user_data = loaded()
-        for k, v in pairs(user_data) do
-            settings[k] = v
-        end
+  for line in data:gmatch('[^\r\n]+') do
+    local key, val = line:match('^([^=]+)=(.+)$')
+    if key and val then
+      key = key:gsub('%s+', ''):lower()
+      val = val:gsub('%s+', '')
+      
+      if tonumber(val) then
+        config[key] = tonumber(val)
+      elseif val == 'true' or val == 'false' then
+        config[key] = (val == 'true')
+      else
+        config[key] = val
+      end
     end
-    return settings
+  end
+  return config
 end
 
-return config
+return { load = load_config }

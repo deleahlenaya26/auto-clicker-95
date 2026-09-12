@@ -1,37 +1,39 @@
-local core = {}
 local ffi = require('ffi')
+local bit = require('bit')
+
 ffi.cdef[[
-    typedef struct { int x, y; } Point;
-    void mouse_event(int dwFlags, int dx, int dy, int dwData, unsigned long dwExtraInfo);
+    void mouse_event(int dwFlags, int dx, int dy, int dwData, int dwExtraInfo);
 ]]
 
-local user32 = ffi.load('user32')
-local cache = { x = 0, y = 0, state = 0 }
+local M = {}
 
-function core.click(x, y)
-    if x == cache.x and y == cache.y and cache.state == 1 then
-        return
+local MOUSEEVENTF_LEFTDOWN = 0x0002
+local MOUSEEVENTF_LEFTUP = 0x0004
+
+local function fast_click()
+    ffi.C.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+    ffi.C.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+end
+
+function M.execute_sequence(count, interval)
+    local start_time = os.clock()
+    local delta = interval / 1000
+    
+    local i = 0
+    while i < count do
+        fast_click()
+        
+        local elapsed = os.clock() - start_time
+        local target = (i + 1) * delta
+        
+        if elapsed < target then
+            local pause = (target - elapsed) * 0.95
+            if pause > 0.001 then
+                os.execute('timeout ' .. tostring(pause) .. ' > NUL 2>&1')
+            end
+        end
+        i = i + 1
     end
-    
-    local MOUSEEVENTF_LEFTDOWN = 0x0002
-    local MOUSEEVENTF_LEFTUP = 0x0004
-    
-    user32.mouse_event(MOUSEEVENTF_LEFTDOWN, x, y, 0, 0)
-    user32.mouse_event(MOUSEEVENTF_LEFTUP, x, y, 0, 0)
-    
-    cache.x, cache.y, cache.state = x, y, 1
 end
 
-function core.reset_cache()
-    cache.state = 0
-end
-
-local clock = os.clock
-function core.throttle(ms)
-    local start = clock()
-    while clock() - start < (ms / 1000) do
-        -- spinlock for micro-precision performance
-    end
-end
-
-return core
+return M
